@@ -66,23 +66,20 @@
 
 #include <unistd.h>
 
-#define SPECVERSIONMAJOR	(1)
-#define SPECVERSIONMINOR	(1)
-#define	SPECREVISION		(2)
-#define SPECSTEP		(0)
+static OMX_VERSIONTYPE SpecificationVersion = {
+	.s.nVersionMajor = 1,
+	.s.nVersionMinor = 1,
+	.s.nRevision     = 2,
+	.s.nStep         = 0
+};
 
 /* Hateful things: */
-#define MAKEMEvar(y, x, l) do {	OMX_VERSIONTYPE *v;			\
-				y = calloc(sizeof(x) + l, 1);		\
-				y->nSize = sizeof(x) + l;		\
-				v = (void *) &(((OMX_U32 *)y)[1]);	\
-				v->s.nVersionMajor = SPECVERSIONMAJOR;	\
-				v->s.nVersionMinor = SPECVERSIONMINOR;	\
-				v->s.nRevision = SPECREVISION;		\
-				v->s.nStep = SPECSTEP;			\
-				} while (0) /* Yes, the void * is evil */
+#define MAKEME(y, x)	do {                        \
+				y = calloc(1, sizeof(x));           \
+				y->nSize = sizeof(x);               \
+				y->nVersion = SpecificationVersion; \
+			} while (0)
 
-#define MAKEME(y, x)	 	MAKEMEvar(y, x, 0)
 
 #define OERR(cmd)	do {						\
 				OMX_ERRORTYPE oerr = cmd;		\
@@ -657,7 +654,7 @@ static AVPacket *filter(struct context *ctx, AVPacket *rp)
 	AVPacket *fp;
 	int rc;
 
-	fp = calloc(sizeof(AVPacket), 1);
+	fp = calloc(1, sizeof(AVPacket));
 
 	if (ctx->bsfc) {
 		rc = av_bitstream_filter_filter(ctx->bsfc,
@@ -1244,12 +1241,12 @@ int main(int argc, char *argv[])
 	OERR(OMX_SendCommand(m2, OMX_CommandStateSet, OMX_StateExecuting,
 		NULL));
 
-	rp = calloc(sizeof(AVPacket), 1);
+	rp = calloc(1, sizeof(AVPacket));
 	filtertest = ish264;
 	tmpbufoff = 0;
 	tmpbuf = NULL;
 	ifbo = 0;
-	ifb = calloc(sizeof(AVPacket *), 1);
+	ifb = calloc(1, sizeof(AVPacket *));
 
 	for (offset = i = j = 0; ctx.decstate != DECFAILED; i++, j++) {
 		int rc;
