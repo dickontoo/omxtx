@@ -371,6 +371,7 @@ printf("Time base: %d/%d, fps %d/%d\n", oflow->time_base.num, oflow->time_base.d
 			avcodec_copy_context(oflow->codec, iflow->codec);
 		/* Apparently fixes a crash on .mkvs with attachments: */
 			av_dict_copy(&oflow->metadata, iflow->metadata, 0);
+			oflow->codec->codec_tag = 0; /* Reset the codec tag so as not to cause problems with output format */
 		}
 	}
 	for (i = 0; i < oc->nb_streams; i++) {
