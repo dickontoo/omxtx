@@ -41,6 +41,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <string.h>
 #include "bcm_host.h"
 #include "libavformat/avformat.h"
@@ -92,12 +93,16 @@ static OMX_VERSIONTYPE SpecificationVersion = {
 						" failed on line %d: %x\n", \
 						__LINE__, oerr);	\
 					exit(1);			\
+				}					\
+			} while(0)
+/*
 				} else {				\
 					fprintf(stderr, #cmd		\
 						" completed at %d.\n",	\
 						__LINE__);		\
 				}					\
 			} while (0)
+*/
 
 #define OERRq(cmd)	do {	oerr = cmd;				\
 				if (oerr != OMX_ErrorNone) {		\
@@ -162,6 +167,9 @@ static struct context {
 	char		*resize;
 	char		*oname;
 	double		frameduration;
+	bool		no_subtitles;
+	int 		*stream_out_idx;
+;
 } ctx;
 #define FLAGS_VERBOSE		(1<<0)
 #define FLAGS_DECEMPTIEDBUF	(1<<1)
@@ -179,7 +187,7 @@ static void dumpport(OMX_HANDLETYPE handle, int port)
 {
 	OMX_VIDEO_PORTDEFINITIONTYPE	*viddef;
 	OMX_PARAM_PORTDEFINITIONTYPE	*portdef;
-
+return;
 	MAKEME(portdef, OMX_PARAM_PORTDEFINITIONTYPE);
 	portdef->nPortIndex = port;
 	OERR(OMX_GetParameter(handle, OMX_IndexParamPortDefinition, portdef));
@@ -310,6 +318,7 @@ static AVFormatContext *makeoutputcontext(AVFormatContext *ic,
 	const OMX_VIDEO_PORTDEFINITIONTYPE	*viddef;
 	int				r;
 	char				err[256];
+	int 				stream_idx;
 
 	viddef = &prt->format.video;
 
@@ -335,11 +344,16 @@ static AVFormatContext *makeoutputcontext(AVFormatContext *ic,
 	oc->debug = 1;
 	oc->start_time_realtime = ic->start_time_realtime;
 	oc->start_time = ic->start_time;
-
+printf("# input stream: %d\n", ic->nb_streams);
+	ctx.stream_out_idx = calloc(ic->nb_streams, sizeof(int));
+	stream_idx = 0;
 #define ETB(x) x.num, x.den
 	for (i = 0; i < ic->nb_streams; i++) {
 		iflow = ic->streams[i];
 		if (i == idx) {	/* My new H.264 stream. */
+printf("Video stream %d\n", stream_idx);
+                        ctx.stream_out_idx[i] = stream_idx;
+			stream_idx ++;
 			c = avcodec_find_encoder(CODEC_ID_H264);
 printf("Found a codec at %p\n", c);
 			oflow = avformat_new_stream(oc, c);
@@ -366,12 +380,31 @@ printf("Defaults: output stream: %d/%d, input stream: %d/%d, input codec: %d/%d,
 printf("Time base: %d/%d, fps %d/%d\n", oflow->time_base.num, oflow->time_base.den, oflow->r_frame_rate.num, oflow->r_frame_rate.den);
 //			oflow->sample_aspect_ratio = iflow->sample_aspect_ratio;
 		} else { 	/* Something pre-existing. */
-			c = avcodec_find_encoder(iflow->codec->codec_id);
-			oflow = avformat_new_stream(oc, c);
-			avcodec_copy_context(oflow->codec, iflow->codec);
-		/* Apparently fixes a crash on .mkvs with attachments: */
-			av_dict_copy(&oflow->metadata, iflow->metadata, 0);
-			oflow->codec->codec_tag = 0; /* Reset the codec tag so as not to cause problems with output format */
+			bool add_stream = true;
+
+			if (ctx.no_subtitles && 
+				((iflow->codec->codec_id >= CODEC_ID_FIRST_SUBTITLE) && (iflow->codec->codec_id < CODEC_ID_FIRST_UNKNOWN)))
+			{
+				add_stream = false;
+			}
+
+			if (add_stream)
+			{
+printf("Other stream %d\n", stream_idx);
+				c = avcodec_find_encoder(iflow->codec->codec_id);
+				oflow = avformat_new_stream(oc, c);
+				avcodec_copy_context(oflow->codec, iflow->codec);
+				/* Apparently fixes a crash on .mkvs with attachments: */
+				av_dict_copy(&oflow->metadata, iflow->metadata, 0);
+				oflow->codec->codec_tag = 0; /* Reset the codec tag so as not to cause problems with output format */
+				ctx.stream_out_idx[i] = stream_idx;
+				stream_idx ++;
+			}
+			else
+			{
+				ctx.stream_out_idx[i] = -1;
+			}
+
 		}
 	}
 	for (i = 0; i < oc->nb_streams; i++) {
@@ -1095,6 +1128,7 @@ static void usage(const char *name)
 	"\t-d\t\tDeinterlace\n"
 	"\t-m\t\tMonitor.  Display the decoder's output\n"
 	"\t-r size\t\tResize output.  'size' is either a percentage, or XXxYY\n"
+	"\t-x\t\tDon't copy subtitles\n"
 	"\n"
 	"Output container is guessed based on filename.  Use '.nal' for raw"
 	" output.\n"
@@ -1151,7 +1185,7 @@ int main(int argc, char *argv[])
 
 	ctx.bitrate = 2*1024*1024;
 
-	while ((opt = getopt(argc, argv, "b:dmr:")) != -1) {
+	while ((opt = getopt(argc, argv, "b:dmxr:")) != -1) {
 		switch (opt) {
 		case 'b':
 			ctx.bitrate = atoi(optarg);
@@ -1164,6 +1198,9 @@ int main(int argc, char *argv[])
 			break;
 		case 'r':
 			ctx.resize = optarg;
+			break;
+		case 'x':
+			ctx.no_subtitles = true;
 			break;
 		case '?':
 			usage(argv[0]);
@@ -1393,6 +1430,7 @@ int main(int argc, char *argv[])
 		int k;
 		int size, nsize;
 		int index;
+		int out_index;
 		OMX_BUFFERHEADERTYPE *spare;
 		AVRational omxtimebase = { 1, 1000000 };
 		OMX_TICKS tick;
@@ -1408,16 +1446,19 @@ int main(int argc, char *argv[])
 			index = rp->stream_index;
 			if (index != vidindex) {
 				i--;
-				if (ctx.oc) {
+				if (ctx.oc && (ctx.stream_out_idx[index] != -1)) {
+					out_index = ctx.stream_out_idx[index];
+
 					int r;
 					if (rp->pts != AV_NOPTS_VALUE)
 						rp->pts = av_rescale_q(rp->pts,
 							ic->streams[index]->time_base,
-							oc->streams[index]->time_base);
+							oc->streams[out_index]->time_base);
 					if (rp->dts != AV_NOPTS_VALUE)
 						rp->dts = av_rescale_q(rp->dts,
 							ic->streams[index]->time_base,
-							oc->streams[index]->time_base);
+							oc->streams[out_index]->time_base);
+					rp->stream_index = out_index;
 					r = av_interleaved_write_frame(ctx.oc,
 						rp);
 					if (r < 0)
@@ -1508,6 +1549,7 @@ int main(int argc, char *argv[])
 			ctx.bufhead = NULL;
 			ctx.flags &= ~FLAGS_DECEMPTIEDBUF;
 			pthread_mutex_unlock(&ctx.lock);
+
 			while (spare) {
 				AVPacket pkt;
 				int r;
@@ -1564,10 +1606,12 @@ int main(int argc, char *argv[])
 //					spare->nTimeStamp.nHighPart == 0) {
 //					pkt.pts = AV_NOPTS_VALUE;
 //				} else {
+					out_index = ctx.stream_out_idx[index];
+
 					pkt.pts = av_rescale_q(((((uint64_t)
 						tick.nHighPart)<<32)
 						| tick.nLowPart), omxtimebase,
-						oc->streams[index]->time_base);
+						oc->streams[out_index]->time_base);
 //				}
 				pkt.dts = AV_NOPTS_VALUE; // dts;
 				dts += ctx.frameduration;
@@ -1596,7 +1640,8 @@ int main(int argc, char *argv[])
 					}
 					if (nt == 7 || nt == 8) {
 						AVCodecContext *c;
-						c = oc->streams[vidindex]->codec;
+						out_index = ctx.stream_out_idx[index];
+						c = oc->streams[out_index]->codec;
 						if (c->extradata) {
 							av_free(c->extradata);
 							c->extradata = NULL;
@@ -1609,7 +1654,8 @@ int main(int argc, char *argv[])
 								&c->extradata_size);
 					}
 				}
-
+				out_index = ctx.stream_out_idx[index];
+				pkt.stream_index = out_index;
 				r = av_interleaved_write_frame(ctx.oc, &pkt);
 				if (r != 0) {
 					char err[256];
