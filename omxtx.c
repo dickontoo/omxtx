@@ -214,6 +214,7 @@ static struct context {
     volatile enum states decstate;
     volatile enum states encstate;
     int  vidindex;
+    int64_t pts_offset;
     OMX_HANDLETYPE dec, enc, rsz, dei;
     pthread_mutex_t lock;
     AVBitStreamFilterContext *bsfc;
@@ -387,15 +388,14 @@ static AVFormatContext *makeOutputContext(AVFormatContext *ic,
             cc = oflow->codec;
             cc->width = viddef->nFrameWidth;
             cc->height = viddef->nFrameHeight;
-            cc->time_base = iflow->codec->time_base;
             cc->codec_id = CODEC_ID_H264;
             cc->codec_type = AVMEDIA_TYPE_VIDEO;
             cc->bit_rate = ctx.bitrate;
+            cc->time_base = iflow->codec->time_base;
 
             oflow->avg_frame_rate = iflow->avg_frame_rate;
             oflow->r_frame_rate = iflow->r_frame_rate;
-            oflow->start_time = iflow->start_time;
-            printf("Start Time (oc) %lld (oflow) %lld\n", oc->start_time, oflow->start_time);
+            oflow->start_time = AV_NOPTS_VALUE;
 
             if (!ctx.resize)  {
                 cc->sample_aspect_ratio.num = iflow->codec->sample_aspect_ratio.num;
@@ -417,6 +417,7 @@ static AVFormatContext *makeOutputContext(AVFormatContext *ic,
                 c = avcodec_find_encoder(iflow->codec->codec_id);
                 oflow = avformat_new_stream(oc, c);
                 avcodec_copy_context(oflow->codec, iflow->codec);
+
                 /* Apparently fixes a crash on .mkvs with attachments: */
                 av_dict_copy(&oflow->metadata, iflow->metadata, 0);
                 oflow->codec->codec_tag = 0; /* Reset the codec tag so as not to cause problems with output format */
@@ -434,7 +435,7 @@ static AVFormatContext *makeOutputContext(AVFormatContext *ic,
         if (oc->oformat->flags & AVFMT_GLOBALHEADER) {
             oc->streams[i]->codec->flags |= CODEC_FLAG_GLOBAL_HEADER;
         }
-        
+
         if (oc->streams[i]->codec->sample_rate == 0) {
             oc->streams[i]->codec->sample_rate = 48000; /* ish */
         }
@@ -453,12 +454,12 @@ static void writeNonVideoPacket(AVPacket *pkt)
         pkt->stream_index = outIndex;
         if (pkt->pts != AV_NOPTS_VALUE) {
             pkt->pts = av_rescale_q(pkt->pts, ctx.ic->streams[index]->time_base, ctx.oc->streams[outIndex]->time_base);
-            pkt->pts -= ctx.oc->start_time / 1000;
+            pkt->pts -= ctx.pts_offset;
         }
-        
+
         if (pkt->dts != AV_NOPTS_VALUE) {
             pkt->dts = av_rescale_q(pkt->dts, ctx.ic->streams[index]->time_base, ctx.oc->streams[outIndex]->time_base);
-            pkt->dts  -= ctx.oc->start_time / 1000;
+            pkt->dts  -= ctx.pts_offset;
         }
         vprintf(V_LOTS, "Other PTS %lld\n", pkt->pts);
         av_interleaved_write_frame(ctx.oc, pkt);
@@ -471,10 +472,11 @@ static void openOutputFile(void)
 {
     int i;
     int r;
+    int out_index;
     struct packet_entry *packet;
     struct packet_entry *next_packet;
     AVFormatContext *oc = ctx.oc;
-    
+
     vprintf(V_LOTS, "Opening output file\n");
     avio_open(&oc->pb, ctx.oname, AVIO_FLAG_WRITE);
     r = avformat_write_header(oc, NULL);
@@ -486,10 +488,13 @@ static void openOutputFile(void)
     }
 
     vprintf(V_LOTS, "Writing initial frame buffer contents out...");
-    
+
+    out_index = ctx.stream_out_idx[ctx.vidindex];
+    ctx.pts_offset = av_rescale_q(ctx.ic->start_time, AV_TIME_BASE_Q, oc->streams[out_index]->time_base);
+
     for (i = 0, packet = TAILQ_FIRST(&packetq); packet != NULL; packet = next_packet) {
         next_packet = TAILQ_NEXT(packet, link);
-        
+
         if (packet->packet.stream_index != ctx.vidindex) {
             i ++;
             writeNonVideoPacket(&packet->packet);
@@ -533,21 +538,6 @@ OMX_ERRORTYPE genericeventhandler(OMX_HANDLETYPE component,
 
     return OMX_ErrorNone;
 }
-
-
-OMX_ERRORTYPE deceventhandler(OMX_HANDLETYPE component,
-                char *name,
-                OMX_EVENTTYPE event, 
-                OMX_U32 data1,
-                OMX_U32 data2,
-                OMX_PTR eventdata)
-{
-    if (event == OMX_EventPortSettingsChanged) {
-        ctx.decstate = DECTUNNELSETUP;
-    }
-    return genericeventhandler(component, name, event, data1, data2, eventdata);
-}
-
 
 OMX_ERRORTYPE emptied(OMX_HANDLETYPE component,
                 char *name,
@@ -1394,7 +1384,7 @@ int main(int argc, char *argv[])
                     ctx.decstate = DECFLUSH;
                 break;
             }
-            
+ 
             omt = av_rescale_q(rp->pts, ic->streams[vidindex]->time_base, omxtimebase);
             tick.nLowPart = (uint32_t) (omt & 0xffffffff);
             tick.nHighPart = (uint32_t)((omt & 0xffffffff00000000) >> 32);
@@ -1429,6 +1419,7 @@ int main(int argc, char *argv[])
             setupFpsThread();
             oc = ctx.oc;
             fd = ctx.fd;
+
             ctx.decstate = ENCSPSPPS;
             break;
         case DECFLUSH:
@@ -1513,9 +1504,9 @@ int main(int argc, char *argv[])
                 pkt.pts = av_rescale_q(((((uint64_t)enc_tick.nHighPart)<<32) | enc_tick.nLowPart), 
                                         omxtimebase, oc->streams[out_index]->time_base);
                 if (pkt.pts != 0) {
-                    pkt.pts -= oc->start_time / 1000;
+                    pkt.pts -= ctx.pts_offset;
                 }
-                printf("V PTS = %lld\n", pkt.pts);
+                vprintf(V_LOTS, "V PTS = %lld\n", pkt.pts);
 
                 pkt.dts = AV_NOPTS_VALUE; // dts;
 
