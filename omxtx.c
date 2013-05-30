@@ -1,6 +1,8 @@
 /* omxtx.c
  *
  * (c) 2012 Dickon Hood <dickon@fluff.org>
+ * With addtions from:
+ * Adam Charrett <adam@dvbstreamer.org>
  *
  * A trivial OpenMAX transcoder for the Pi.
  *
@@ -28,11 +30,6 @@
 /* To do:
  *
  *  *  Flush the buffers at the end
- *  *  Sort out the PTSes
- *  *  Read up on buffer timings in general
- *  *  Feed the packets to AVFormat rather than dumping them raw to disc
- *  *  Interleave correctly with the other AV packets in the stream, rather
- *     than just dropping them entirely
  */
 
 #define _BSD_SOURCE
@@ -1619,8 +1616,8 @@ int main(int argc, char *argv[])
 
     end = time(NULL);
 
-    printf("Processed %d frames in %d seconds; %df/s\n\n\n",
-        ctx.framecount, end-start, (ctx.framecount/(end-start)));
+    printf("Processed %lld frames in %d seconds; %lldf/s\n\n\n",
+        ctx.framecount, end-start, (ctx.framecount/(int64_t)(end-start)));
 
     if (oc) {
         av_write_trailer(oc);
