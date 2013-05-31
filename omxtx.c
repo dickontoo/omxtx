@@ -404,7 +404,7 @@ static AVFormatContext *makeOutputContext(AVFormatContext *ic,
             bool add_stream = true;
 
             if (ctx.no_subtitles && 
-                ((iflow->codec->codec_id >= CODEC_ID_FIRST_SUBTITLE) && (iflow->codec->codec_id < CODEC_ID_FIRST_UNKNOWN)))
+                (iflow->codec->codec_type != AVMEDIA_TYPE_AUDIO))
             {
                 add_stream = false;
             }
@@ -1206,12 +1206,46 @@ static void usage(const char *name)
     "\t-d\t\tDeinterlace\n"
     "\t-m\t\tMonitor.  Display the decoder's output\n"
     "\t-r size\t\tResize output.  'size' is either a percentage, or XXxYY\n"
-    "\t-x\t\tDon't copy subtitles\n"
+    "\t-x\t\tExclude subtitle and data streams\n"
     "\n"
     "Output container is guessed based on filename.  Use '.nal' for raw"
     " output.\n"
     "\n", name);
     exit(1);
+}
+
+static int parse_bitrate(const char *s)
+{
+    float rate;
+    char specifier;
+    int r;
+
+    r = sscanf(s, "%f%c", &rate, &specifier);
+    switch (r)
+    {
+    case 1:
+        return (int)rate;
+    case 2:
+        switch (specifier)
+        {
+        case 'K':
+        case 'k':
+            return (int)(rate * 1024.0);
+        case 'M':
+        case 'm':
+            return (int)(rate * 1024.0 * 1024.0);
+        default:
+            fprintf(stderr, "Unrecognised bitrate specifier!\n");
+            exit(1);
+            break;
+        }
+        break;
+    default:
+        fprintf(stderr, "Failed to parse bitrate!\n");
+        exit(1);
+        break;
+    }
+    return 0;
 }
 
 static void freePacket(AVPacket *p)
@@ -1289,7 +1323,8 @@ int main(int argc, char *argv[])
     while ((opt = getopt(argc, argv, "b:dmxr:v")) != -1) {
         switch (opt) {
         case 'b':
-            ctx.bitrate = atoi(optarg);
+            ctx.bitrate = parse_bitrate(optarg);
+            vprintf(V_INFO, "Bitrate = %d\n", ctx.bitrate);
             break;
         case 'd':
             ctx.flags |= FLAGS_DEINTERLACE;
