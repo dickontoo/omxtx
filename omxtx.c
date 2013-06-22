@@ -103,7 +103,7 @@ static OMX_VERSIONTYPE SpecificationVersion = {
                         __LINE__, oerr); \
                     exit(1);   \
                 } else {    \
-                    vprintf( V_LOTS, #cmd  \
+                    logprintf( V_LOTS, #cmd  \
                         " completed at %d.\n", \
                         __LINE__);  \
                 }     \
@@ -124,7 +124,7 @@ static OMX_VERSIONTYPE SpecificationVersion = {
 #define V_INFO    1
 #define V_LOTS    2
 
-#define vprintf(v, ...) \
+#define logprintf(v, ...) \
     do { \
         if ((v) <= ctx.verbosity) { \
             printf( __VA_ARGS__); \
@@ -238,10 +238,10 @@ static void dumpPort(OMX_HANDLETYPE handle, int port)
     portdef->nPortIndex = port;
     OERR(OMX_GetParameter(handle, OMX_IndexParamPortDefinition, portdef));
 
-    vprintf(V_LOTS, "Port %d is %s, %s\n", portdef->nPortIndex,
+    logprintf(V_LOTS, "Port %d is %s, %s\n", portdef->nPortIndex,
         (portdef->eDir == 0 ? "input" : "output"),
         (portdef->bEnabled == 0 ? "disabled" : "enabled"));
-    vprintf(V_LOTS, "Wants %d bufs, needs %d, size %d, enabled: %d, pop: %d, "
+    logprintf(V_LOTS, "Wants %d bufs, needs %d, size %d, enabled: %d, pop: %d, "
         "aligned %d\n", portdef->nBufferCountActual,
         portdef->nBufferCountMin, portdef->nBufferSize,
         portdef->bEnabled, portdef->bPopulated,
@@ -250,7 +250,7 @@ static void dumpPort(OMX_HANDLETYPE handle, int port)
 
     switch (portdef->eDomain) {
     case OMX_PortDomainVideo:
-        vprintf(V_LOTS, "Video type is currently:\n"
+        logprintf(V_LOTS, "Video type is currently:\n"
             "\tMIME:\t\t%s\n"
             "\tNative:\t\t%p\n"
             "\tWidth:\t\t%d\n"
@@ -272,7 +272,7 @@ static void dumpPort(OMX_HANDLETYPE handle, int port)
             viddef->eCompressionFormat, viddef->eColorFormat);
         break;
     case OMX_PortDomainImage:
-        vprintf(V_LOTS, "Image type is currently:\n"
+        logprintf(V_LOTS, "Image type is currently:\n"
             "\tMIME:\t\t%s\n"
             "\tNative:\t\t%p\n"
             "\tWidth:\t\t%d\n"
@@ -305,16 +305,16 @@ static void dumpPortState(void)
 {
     enum OMX_STATETYPE  state;
 
-    vprintf(V_LOTS, "\n\nIn exit handler, after %d frames:\n", ctx.framecount);
+    logprintf(V_LOTS, "\n\nIn exit handler, after %d frames:\n", ctx.framecount);
     dumpPort(ctx.dec, PORT_DEC);
     dumpPort(ctx.dec, PORT_DEC+1);
     dumpPort(ctx.enc, PORT_ENC);
     dumpPort(ctx.enc, PORT_ENC+1);
 
     OMX_GetState(ctx.dec, &state);
-    vprintf(V_LOTS, "Decoder state: %d\n", state);
+    logprintf(V_LOTS, "Decoder state: %d\n", state);
     OMX_GetState(ctx.enc, &state);
-    vprintf(V_LOTS, "Encoder state: %d\n", state);
+    logprintf(V_LOTS, "Encoder state: %d\n", state);
 }
 
 
@@ -458,7 +458,7 @@ static void writeNonVideoPacket(AVPacket *pkt)
             pkt->dts = av_rescale_q(pkt->dts, ctx.ic->streams[index]->time_base, ctx.oc->streams[outIndex]->time_base);
             pkt->dts  -= ctx.pts_offset;
         }
-        vprintf(V_LOTS, "Other PTS %lld\n", pkt->pts);
+        logprintf(V_LOTS, "Other PTS %lld\n", pkt->pts);
         av_interleaved_write_frame(ctx.oc, pkt);
     } else {
         av_free_packet(pkt);
@@ -474,7 +474,7 @@ static void openOutputFile(void)
     struct packet_entry *next_packet;
     AVFormatContext *oc = ctx.oc;
 
-    vprintf(V_LOTS, "Opening output file\n");
+    logprintf(V_LOTS, "Opening output file\n");
     avio_open(&oc->pb, ctx.oname, AVIO_FLAG_WRITE);
     r = avformat_write_header(oc, NULL);
     if (r < 0) {
@@ -484,7 +484,7 @@ static void openOutputFile(void)
         exit(1);
     }
 
-    vprintf(V_LOTS, "Writing initial frame buffer contents out...");
+    logprintf(V_LOTS, "Writing initial frame buffer contents out...");
 
     out_index = ctx.stream_out_idx[ctx.vidindex];
     ctx.pts_offset = av_rescale_q(ctx.ic->start_time, AV_TIME_BASE_Q, oc->streams[out_index]->time_base);
@@ -502,7 +502,7 @@ static void openOutputFile(void)
         free(packet);
     }
 
-    vprintf(V_LOTS, " ...done.  Wrote %d frames.\n\n", i);
+    logprintf(V_LOTS, " ...done.  Wrote %d frames.\n\n", i);
 }
 
 OMX_ERRORTYPE genericeventhandler(OMX_HANDLETYPE component,
@@ -513,7 +513,7 @@ OMX_ERRORTYPE genericeventhandler(OMX_HANDLETYPE component,
                 OMX_PTR eventdata)
 {
     struct event_info *msg;
-    vprintf(V_LOTS, "Event for %s type %x (data1 %x, data2 %x, eventdata %p)\n", 
+    logprintf(V_LOTS, "Event for %s type %x (data1 %x, data2 %x, eventdata %p)\n", 
             name, event, data1, data2, eventdata);
     
     msg = calloc(1, sizeof(struct event_info));
@@ -523,7 +523,7 @@ OMX_ERRORTYPE genericeventhandler(OMX_HANDLETYPE component,
     msg->data1 = data1;
     msg->data2 = data2;
     msg->eventdata = eventdata;
-    vprintf(V_LOTS, "EventQ: Adding EventInfo %p\n", msg);
+    logprintf(V_LOTS, "EventQ: Adding EventInfo %p\n", msg);
     pthread_mutex_lock(&eventq.lock);
     TAILQ_INSERT_TAIL(&eventq.head, msg, link);
     pthread_cond_signal(&eventq.notify);
@@ -540,7 +540,7 @@ OMX_ERRORTYPE emptied(OMX_HANDLETYPE component,
                 char *name,
                 OMX_BUFFERHEADERTYPE *buf)
 {
-    vprintf( V_LOTS, "Got a buffer emptied event on %s %p, buf %p\n", name, component, buf);
+    logprintf( V_LOTS, "Got a buffer emptied event on %s %p, buf %p\n", name, component, buf);
     buf->nFilledLen = 0;
     ctx.flags |= FLAGS_DECEMPTIEDBUF;
     return OMX_ErrorNone;
@@ -552,7 +552,7 @@ OMX_ERRORTYPE filled(OMX_HANDLETYPE component,
 {
     OMX_BUFFERHEADERTYPE *spare;
 
-    vprintf(V_LOTS, "Got buffer %p filled (len %d)\n", buf, buf->nFilledLen);
+    logprintf(V_LOTS, "Got buffer %p filled (len %d)\n", buf, buf->nFilledLen);
 
     /*
      * Don't call OMX_FillThisBuffer() here, as the hardware craps out after
@@ -612,7 +612,7 @@ static bool getEvent(struct event_info *event, bool wait)
     do {
         qevent = TAILQ_FIRST(&eventq.head);
         if (qevent != NULL) {
-            vprintf(V_LOTS, "getEvent: EventInfo %p: %s Component %#x Event %#x data1 %#x data2 %#x eventdata %#x\n", qevent,
+            logprintf(V_LOTS, "getEvent: EventInfo %p: %s Component %#x Event %#x data1 %#x data2 %#x eventdata %#x\n", qevent,
                 qevent->name, qevent->component, qevent->event, qevent->data1, qevent->data2, qevent->eventdata);
             *event = *qevent;
             found = true;
@@ -620,7 +620,7 @@ static bool getEvent(struct event_info *event, bool wait)
             free(qevent);
         }        
         if (!found && wait){
-            vprintf(V_LOTS, "Waiting for event\n");
+            logprintf(V_LOTS, "Waiting for event\n");
             pthread_cond_wait(&eventq.notify, &eventq.lock);
         }
     } while(!found && wait);
@@ -636,7 +636,7 @@ static int waitForCommand(OMX_HANDLETYPE h, OMX_COMMANDTYPE cmd, OMX_U32 data, O
     pthread_mutex_lock(&eventq.lock);
     do {
         TAILQ_FOREACH(event, &eventq.head, link){
-            vprintf(V_LOTS, "waitForCommand: EventInfo %p: %s Component %#x Event %#x data1 %#x data2 %#x eventdata %#x\n", event,
+            logprintf(V_LOTS, "waitForCommand: EventInfo %p: %s Component %#x Event %#x data1 %#x data2 %#x eventdata %#x\n", event,
                 event->name, event->component, event->event, event->data1, event->data2, event->eventdata);
             if (event->component == h){
                 if ((event->event == OMX_EventCmdComplete) &&
@@ -661,7 +661,7 @@ static int waitForCommand(OMX_HANDLETYPE h, OMX_COMMANDTYPE cmd, OMX_U32 data, O
             }
         }
         if (!found){
-            vprintf(V_LOTS, "Waiting for event\n");
+            logprintf(V_LOTS, "Waiting for event\n");
             pthread_cond_wait(&eventq.notify, &eventq.lock);
         }
     } while(!found);
@@ -674,18 +674,18 @@ static int waitForCommand(OMX_HANDLETYPE h, OMX_COMMANDTYPE cmd, OMX_U32 data, O
 static void _enablePort(OMX_HANDLETYPE h, int port, int line)
 {
     int err;
-    vprintf(V_LOTS, "%d: Enabling port %d on component %#x\n", line, port, h);
+    logprintf(V_LOTS, "%d: Enabling port %d on component %#x\n", line, port, h);
     OERRq(OMX_SendCommand(h, OMX_CommandPortEnable, port, NULL));
     err = waitForCommand(h, OMX_CommandPortEnable, port, NULL);
     if (err != 0) {
-        vprintf(V_ALWAYS, "Enable Port for Component %d port %d failed with error %#x\n", h, port, err);
+        logprintf(V_ALWAYS, "Enable Port for Component %d port %d failed with error %#x\n", h, port, err);
     }
 }
 
 #define enablePortNW(h, p) _enablePortNW(h, p, __LINE__)
 static void _enablePortNW(OMX_HANDLETYPE h, int port, int line)
 {
-    vprintf(V_LOTS, "%d: Enabling port %d on component %#x (Not waiting)\n", line, port, h);
+    logprintf(V_LOTS, "%d: Enabling port %d on component %#x (Not waiting)\n", line, port, h);
     OERRq(OMX_SendCommand(h, OMX_CommandPortEnable, port, NULL));
 }
 
@@ -693,10 +693,10 @@ static void _enablePortNW(OMX_HANDLETYPE h, int port, int line)
 static void _waitForPortEnabled(OMX_HANDLETYPE h, int port, int line)
 {
     int err;
-    vprintf(V_LOTS, "%d: Waiting for port %d on component %#x to be enabled\n", line, port, h);
+    logprintf(V_LOTS, "%d: Waiting for port %d on component %#x to be enabled\n", line, port, h);
     err = waitForCommand(h, OMX_CommandPortEnable, port, NULL);
     if (err != 0) {
-        vprintf(V_ALWAYS, "Enable Port for Component %d port %d failed with error %#x\n", h, port, err);
+        logprintf(V_ALWAYS, "Enable Port for Component %d port %d failed with error %#x\n", h, port, err);
     }
 }
 
@@ -704,11 +704,11 @@ static void _waitForPortEnabled(OMX_HANDLETYPE h, int port, int line)
 static void _disablePort(OMX_HANDLETYPE h, int port, int line)
 {
     int err;
-    vprintf(V_LOTS, "%d: Disabling port %d on component %#x\n", line, port, h);
+    logprintf(V_LOTS, "%d: Disabling port %d on component %#x\n", line, port, h);
     OERRq(OMX_SendCommand(h, OMX_CommandPortDisable, port, NULL));
     err = waitForCommand(h, OMX_CommandPortDisable, port, NULL);
     if (err != 0) {
-        vprintf(V_ALWAYS, "Disable Port for Component %d port %d failed with error %#x\n", h, port, err);
+        logprintf(V_ALWAYS, "Disable Port for Component %d port %d failed with error %#x\n", h, port, err);
     }
 }
 
@@ -716,12 +716,12 @@ static void _disablePort(OMX_HANDLETYPE h, int port, int line)
 static void _setState(OMX_HANDLETYPE h, int state, int line)
 {
     int err;
-    vprintf(V_LOTS, "%d: Setting state %d on component %#x\n", line, state, h);
+    logprintf(V_LOTS, "%d: Setting state %d on component %#x\n", line, state, h);
     OERRq(OMX_SendCommand(h, OMX_CommandStateSet, state, NULL));
     err = waitForCommand(h, OMX_CommandStateSet, state, NULL);
 
     if (err != 0) {
-        vprintf(V_ALWAYS, "Set state for Component %d state %d failed with error %#x (line %d)\n", h, state, err, line);
+        logprintf(V_ALWAYS, "Set state for Component %d state %d failed with error %#x (line %d)\n", h, state, err, line);
     }
 }
 
@@ -738,7 +738,7 @@ static void _transistionComponents(OMX_HANDLETYPE *handles, int hcount, int stat
     {
         int err = waitForCommand(handles[i], OMX_CommandStateSet, state, NULL);    
         if (err != 0) {
-            vprintf(V_ALWAYS, "Transitioning state for Component %d state %d failed with error %#x (line %d)\n", handles[i], state, err, line);
+            logprintf(V_ALWAYS, "Transitioning state for Component %d state %d failed with error %#x (line %d)\n", handles[i], state, err, line);
         }
     }
 }
@@ -752,7 +752,7 @@ static void getPortDef(OMX_HANDLETYPE h, int port, OMX_PARAM_PORTDEFINITIONTYPE 
 #define setPortDef(h, p, pd) _setPortDef(h,p,pd, __LINE__)
 static void _setPortDef(OMX_HANDLETYPE h, int port, OMX_PARAM_PORTDEFINITIONTYPE *portdef, int line)
 {
-    vprintf(V_LOTS, "%d: Setting port definition %p on port %d of componenent %#x\n", line, portdef, port, h);
+    logprintf(V_LOTS, "%d: Setting port definition %p on port %d of componenent %#x\n", line, portdef, port, h);
     portdef->nPortIndex = port;
     OERR(OMX_SetParameter(h, OMX_IndexParamPortDefinition, portdef));
 }
@@ -760,11 +760,18 @@ static void _setPortDef(OMX_HANDLETYPE h, int port, OMX_PARAM_PORTDEFINITIONTYPE
 static void *fps(void *p)
 {
     int    lastframe;
+    int64_t seconds;
+    int64_t total_seconds = ctx.ic->duration / AV_TIME_BASE;
+    int64_t percent;
+    int fr_num = ctx.oc->streams[ctx.vidindex]->avg_frame_rate.num;
+    int fr_den = ctx.oc->streams[ctx.vidindex]->avg_frame_rate.den;
     while (1) {
         lastframe = ctx.framecount;
         sleep(1);
-        printf("Frame %6lld (%5llds).  Frames last second: %lld     \r",
-            ctx.framecount, ctx.framecount/25, 
+        seconds = (ctx.framecount * fr_den) / fr_num;
+        percent = (seconds * 100) / total_seconds;
+        printf("Frame %6lld (%5llds/%5llds %d%%).  Frames last second: %lld     \r",
+            ctx.framecount, seconds, total_seconds, percent,
             ctx.framecount-lastframe);
         fflush(stdout);
     }
@@ -790,7 +797,7 @@ static OMX_BUFFERHEADERTYPE *allocBuffers(OMX_HANDLETYPE h, int port, int enable
         OMX_U8 *buf;
 
         buf = vcos_malloc_aligned(portdef.nBufferSize, portdef.nBufferAlignment, "buffer");
-        vprintf(V_LOTS, "Allocated a buffer of %d bytes\n", portdef.nBufferSize);
+        logprintf(V_LOTS, "Allocated a buffer of %d bytes\n", portdef.nBufferSize);
         
         OERR(OMX_UseBuffer(h, end, port, NULL, portdef.nBufferSize, buf));
         end = (OMX_BUFFERHEADERTYPE **) &((*end)->pAppPrivate);
@@ -855,7 +862,7 @@ static void configDeinterlacer(OMX_PARAM_PORTDEFINITIONTYPE *inPortDef, OMX_PARA
     
     SETUPME(extra_buffers);
     SETUPME(image_filter);
-    vprintf(V_LOTS, "Setting up Deinterlacer\n");
+    logprintf(V_LOTS, "Setting up Deinterlacer\n");
 
     setPortDef(dei, PORT_DEI, inPortDef);
     setPortDef(dei, PORT_DEI + 1, inPortDef);
@@ -872,7 +879,7 @@ static void configDeinterlacer(OMX_PARAM_PORTDEFINITIONTYPE *inPortDef, OMX_PARA
     OERR(OMX_SetConfig(dei, OMX_IndexConfigCommonImageFilterParameters, &image_filter));
 
     getPortDef(dei, PORT_DEI, outPortDef);
-    vprintf(V_LOTS, "Deinterlacer setup\n");
+    logprintf(V_LOTS, "Deinterlacer setup\n");
 }
 
 static void configResizer(OMX_PARAM_PORTDEFINITIONTYPE *inPortDef, OMX_PARAM_PORTDEFINITIONTYPE *outPortDef)
@@ -885,7 +892,7 @@ static void configResizer(OMX_PARAM_PORTDEFINITIONTYPE *inPortDef, OMX_PARAM_POR
     
     SETUPME(imgportdef);
     
-    vprintf(V_LOTS, "Setting up Resizer\n");
+    logprintf(V_LOTS, "Setting up Resizer\n");
     getPortDef(rsz, PORT_RSZ, &imgportdef);
 
     imgdef->nFrameWidth = viddef->nFrameWidth;
@@ -917,12 +924,12 @@ static void configResizer(OMX_PARAM_PORTDEFINITIONTYPE *inPortDef, OMX_PARAM_POR
 
     imgdef->nStride = 0;
     imgdef->nSliceHeight = 0;
-    vprintf(V_INFO, "Frame size: %dx%d, scale factor %d\n", imgdef->nFrameWidth, imgdef->nFrameHeight, x);
+    logprintf(V_INFO, "Frame size: %dx%d, scale factor %d\n", imgdef->nFrameWidth, imgdef->nFrameHeight, x);
         
     setPortDef(rsz, PORT_RSZ + 1, &imgportdef);
 
     getPortDef(rsz, PORT_RSZ + 1, outPortDef);
-    vprintf(V_LOTS, "Resizer setup\n");
+    logprintf(V_LOTS, "Resizer setup\n");
 }
 
 static void configEncoder(OMX_PARAM_PORTDEFINITIONTYPE *inPortDef)
@@ -963,7 +970,7 @@ static void configEncoder(OMX_PARAM_PORTDEFINITIONTYPE *inPortDef)
     level.nPortIndex = PORT_ENC+1;
     OERR(OMX_GetParameter(enc, OMX_IndexParamVideoProfileLevelCurrent, &level));
 
-    vprintf(V_LOTS, "Current Level:\t%d\tProfile:\t%d\n", level.eLevel, level.eProfile);
+    logprintf(V_LOTS, "Current Level:\t%d\tProfile:\t%d\n", level.eLevel, level.eProfile);
     
     OERR(OMX_SetParameter(enc, OMX_IndexParamVideoProfileLevelCurrent, &level));
     
@@ -995,7 +1002,7 @@ static void configure(struct context *pctx)
     prev = dec;
     pp = PORT_DEC+1;
 
-    vprintf(V_INFO, "Decoder has changed settings.  Setting up encoder.\n");
+    logprintf(V_INFO, "Decoder has changed settings.  Setting up encoder.\n");
 
     if (pctx->flags & FLAGS_MONITOR) {
         int i;
@@ -1049,7 +1056,7 @@ static void configure(struct context *pctx)
     setPortDef(enc, PORT_ENC, portdef);
     components[handle_count++] = enc;
 
-    vprintf(V_LOTS, "Setting up tunnels\n");
+    logprintf(V_LOTS, "Setting up tunnels\n");
     /* Setup the tunnel(s): */
     if (pctx->flags & FLAGS_MONITOR) {
         setPortDef(spl, PORT_SPL, portdef);
@@ -1069,7 +1076,7 @@ static void configure(struct context *pctx)
     }
     
     OERR(OMX_SetupTunnel(prev, pp, enc, PORT_ENC));
-    vprintf(V_LOTS, "Tunnels setup\n");
+    logprintf(V_LOTS, "Tunnels setup\n");
     transistionComponents(components, handle_count, OMX_StateIdle);
 
     configEncoder(portdef);
@@ -1137,7 +1144,7 @@ static OMX_BUFFERHEADERTYPE* configDecoder(AVStream *videoStream)
     viddef->nFrameHeight = videoStream->codec->height;
     
     viddef->eCompressionFormat = mapCodec(videoStream->codec->codec_id);
-    vprintf(V_LOTS, "Mapping codec %d to %d\n",
+    logprintf(V_LOTS, "Mapping codec %d to %d\n",
         videoStream->codec->codec_id, viddef->eCompressionFormat);
 
     viddef->bFlagErrorConcealment = 0;
@@ -1324,7 +1331,7 @@ int main(int argc, char *argv[])
         switch (opt) {
         case 'b':
             ctx.bitrate = parse_bitrate(optarg);
-            vprintf(V_INFO, "Bitrate = %d\n", ctx.bitrate);
+            logprintf(V_INFO, "Bitrate = %d\n", ctx.bitrate);
             break;
         case 'd':
             ctx.flags |= FLAGS_DEINTERLACE;
@@ -1377,9 +1384,9 @@ int main(int argc, char *argv[])
         fprintf(stderr, "Failed to find a video stream in '%s'\n", iname);
         exit(1);
     }
-    vprintf(V_LOTS, "Found a video at index %d\n", vidindex);
+    logprintf(V_LOTS, "Found a video at index %d\n", vidindex);
 
-    vprintf(V_INFO, "Frame size: %dx%d\n", ic->streams[vidindex]->codec->width, 
+    logprintf(V_INFO, "Frame size: %dx%d\n", ic->streams[vidindex]->codec->width, 
         ic->streams[vidindex]->codec->height);
     
     ish264 = (ic->streams[vidindex]->codec->codec_id == CODEC_ID_H264);
@@ -1389,7 +1396,7 @@ int main(int argc, char *argv[])
     dec  = ctx.dec;
     
     decbufs = configDecoder(ic->streams[vidindex]);
-    vprintf(V_LOTS, "Decoder setup\n");
+    logprintf(V_LOTS, "Decoder setup\n");
     
     av_init_packet(&videoPacket);
     rp = &videoPacket;
@@ -1443,7 +1450,7 @@ int main(int argc, char *argv[])
                 }   
             }
         }
-        vprintf(V_LOTS, "State %d\n", ctx.decstate);
+        logprintf(V_LOTS, "State %d\n", ctx.decstate);
         switch (ctx.decstate) {
         case DECTUNNELSETUP:
             start = time(NULL);
@@ -1538,7 +1545,7 @@ int main(int argc, char *argv[])
                 if (pkt.pts != 0) {
                     pkt.pts -= ctx.pts_offset;
                 }
-                vprintf(V_LOTS, "V PTS = %lld\n", pkt.pts);
+                logprintf(V_LOTS, "V PTS = %lld\n", pkt.pts);
 
                 pkt.dts = AV_NOPTS_VALUE; // dts;
 
@@ -1557,7 +1564,7 @@ int main(int argc, char *argv[])
 
                         memcpy(sps, pkt.data, pkt.size);
                         spssize = pkt.size;
-                        vprintf(V_LOTS, "New SPS, length %d\n", spssize);
+                        logprintf(V_LOTS, "New SPS, length %d\n", spssize);
                         write_pkt = false;
                     } else if (nt == 8) {
                         if (pps) {
@@ -1567,7 +1574,7 @@ int main(int argc, char *argv[])
 
                         memcpy(pps, pkt.data, pkt.size);
                         ppssize = pkt.size;
-                        vprintf(V_LOTS, "New PPS, length %d\n", ppssize);
+                        logprintf(V_LOTS, "New PPS, length %d\n", ppssize);
                         write_pkt = false;
                     }
 
